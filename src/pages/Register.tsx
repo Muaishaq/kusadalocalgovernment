@@ -1,17 +1,36 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { UserPlus, Mail, Lock, User, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import Layout from "@/components/Layout";
 
 const Register = () => {
-  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", role: "supporter" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
+  const [loading, setLoading] = useState(false);
+  const { signUp, user } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  if (user) {
+    navigate("/dashboard", { replace: true });
+    return null;
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Auth will be connected later with Lovable Cloud
+    setLoading(true);
+    const { error } = await signUp(form.email, form.password, form.name, form.phone || undefined);
+    setLoading(false);
+
+    if (error) {
+      toast({ title: "Registration failed", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Account created!", description: "Check your email to confirm, then log in." });
+      navigate("/login");
+    }
   };
 
   return (
@@ -24,7 +43,7 @@ const Register = () => {
                 <UserPlus className="w-7 h-7 text-accent" />
               </div>
               <h1 className="font-display text-2xl font-bold text-card-foreground">Join the Campaign</h1>
-              <p className="text-sm text-muted-foreground mt-1">Register as a supporter or volunteer</p>
+              <p className="text-sm text-muted-foreground mt-1">Register to get started</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -50,25 +69,14 @@ const Register = () => {
                 </div>
               </div>
               <div>
-                <label className="text-sm font-medium text-foreground mb-1.5 block">I want to</label>
-                <Select value={form.role} onValueChange={v => setForm({...form, role: v})}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="supporter">Support the Campaign</SelectItem>
-                    <SelectItem value="volunteer">Volunteer</SelectItem>
-                    <SelectItem value="donor">Donate</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
                 <label className="text-sm font-medium text-foreground mb-1.5 block">Password</label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input type="password" placeholder="••••••••" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="pl-10" required />
+                  <Input type="password" placeholder="••••••••" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="pl-10" required minLength={6} />
                 </div>
               </div>
-              <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold">
-                Create Account
+              <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold" disabled={loading}>
+                {loading ? "Creating account..." : "Create Account"}
               </Button>
             </form>
 
