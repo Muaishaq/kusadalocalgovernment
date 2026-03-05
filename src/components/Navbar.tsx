@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Menu, X, User } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Menu, X, User, LogOut, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -13,6 +14,13 @@ const navLinks = [
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, profile, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-secondary/95 backdrop-blur-md border-b border-secondary">
@@ -43,16 +51,32 @@ const Navbar = () => {
         </div>
 
         <div className="hidden md:flex items-center gap-2">
-          <Link to="/login">
-            <Button variant="ghost" size="sm" className="text-secondary-foreground/80 hover:text-secondary-foreground">
-              <User className="w-4 h-4 mr-1" /> Login
-            </Button>
-          </Link>
-          <Link to="/register">
-            <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold">
-              Join Campaign
-            </Button>
-          </Link>
+          {user ? (
+            <>
+              <Link to="/dashboard">
+                <Button variant="ghost" size="sm" className="text-secondary-foreground/80 hover:text-secondary-foreground">
+                  <LayoutDashboard className="w-4 h-4 mr-1" /> Dashboard
+                </Button>
+              </Link>
+              <span className="text-secondary-foreground/60 text-xs">{profile?.full_name || user.email}</span>
+              <Button variant="ghost" size="sm" className="text-secondary-foreground/80 hover:text-secondary-foreground" onClick={handleSignOut}>
+                <LogOut className="w-4 h-4 mr-1" /> Logout
+              </Button>
+            </>
+          ) : (
+            <>
+              <Link to="/login">
+                <Button variant="ghost" size="sm" className="text-secondary-foreground/80 hover:text-secondary-foreground">
+                  <User className="w-4 h-4 mr-1" /> Login
+                </Button>
+              </Link>
+              <Link to="/register">
+                <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold">
+                  Join Campaign
+                </Button>
+              </Link>
+            </>
+          )}
         </div>
 
         <button className="md:hidden text-secondary-foreground" onClick={() => setOpen(!open)}>
@@ -77,12 +101,25 @@ const Navbar = () => {
             </Link>
           ))}
           <div className="px-6 pt-2 flex gap-2">
-            <Link to="/login" onClick={() => setOpen(false)}>
-              <Button variant="ghost" size="sm" className="text-secondary-foreground/80">Login</Button>
-            </Link>
-            <Link to="/register" onClick={() => setOpen(false)}>
-              <Button size="sm" className="bg-accent text-accent-foreground font-semibold">Join Campaign</Button>
-            </Link>
+            {user ? (
+              <>
+                <Link to="/dashboard" onClick={() => setOpen(false)}>
+                  <Button variant="ghost" size="sm" className="text-secondary-foreground/80">Dashboard</Button>
+                </Link>
+                <Button variant="ghost" size="sm" className="text-secondary-foreground/80" onClick={() => { handleSignOut(); setOpen(false); }}>
+                  Logout
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" onClick={() => setOpen(false)}>
+                  <Button variant="ghost" size="sm" className="text-secondary-foreground/80">Login</Button>
+                </Link>
+                <Link to="/register" onClick={() => setOpen(false)}>
+                  <Button size="sm" className="bg-accent text-accent-foreground font-semibold">Join Campaign</Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}
