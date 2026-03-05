@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight, Users, MapPin, BookOpen, Heart, Shield, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Layout from "@/components/Layout";
-import heroBg from "@/assets/hero-bg.jpg";
+import ismailPhoto from "@/assets/ismail-photo.jpg";
 
 const parties = [
   { name: "APC", full: "All Progressives Congress", color: "bg-primary" },
