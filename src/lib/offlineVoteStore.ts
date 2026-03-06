@@ -43,8 +43,8 @@ export async function saveVoteOffline(vote: Omit<OfflineVote, 'synced' | 'sync_e
 
 export async function getPendingVotes(): Promise<OfflineVote[]> {
   const db = await getDB();
-  const all = await db.getAllFromIndex(STORE_NAME, 'synced', false);
-  return all as OfflineVote[];
+  const all = await db.getAll(STORE_NAME);
+  return (all as OfflineVote[]).filter((v) => !v.synced);
 }
 
 export async function markVoteSynced(id: string): Promise<void> {
