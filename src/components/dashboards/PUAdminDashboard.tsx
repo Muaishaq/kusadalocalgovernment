@@ -2,9 +2,11 @@ import { ClipboardList, Upload, CheckCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import OfflineStatusBar from "@/components/OfflineStatusBar";
 
 const PUAdminDashboard = () => (
   <div className="space-y-6">
+    <OfflineStatusBar />
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
