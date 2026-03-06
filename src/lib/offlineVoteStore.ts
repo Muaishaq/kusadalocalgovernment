@@ -73,7 +73,8 @@ export async function getAllOfflineVotes(): Promise<OfflineVote[]> {
 
 export async function clearSyncedVotes(): Promise<void> {
   const db = await getDB();
-  const synced = await db.getAllFromIndex(STORE_NAME, 'synced', true);
+  const all = await db.getAll(STORE_NAME);
+  const synced = (all as OfflineVote[]).filter((v) => v.synced);
   const tx = db.transaction(STORE_NAME, 'readwrite');
   for (const vote of synced) {
     await tx.store.delete(vote.id);
