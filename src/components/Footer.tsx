@@ -6,7 +6,7 @@ const Footer = () => (
     <div className="container mx-auto px-4 py-12">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div>
-          <h3 className="font-display text-xl font-bold mb-4">Aliyu Ismail</h3>
+          <h3 className="font-display text-xl font-bold mb-4">Aliyu Kabir Kusada</h3>
           <p className="text-secondary-foreground/70 text-sm leading-relaxed">
             Dedicated to transforming Kusada Local Government and Katsina State through integrity, 
             development, and people-centered governance.
@@ -31,7 +31,7 @@ const Footer = () => (
         </div>
       </div>
       <div className="border-t border-secondary-foreground/10 mt-8 pt-6 text-center text-xs text-secondary-foreground/50">
-        © {new Date().getFullYear()} Aliyu Ismail Campaign. All rights reserved.
+        © {new Date().getFullYear()} Aliyu Kabir Kusada Campaign. All rights reserved.
       </div>
     </div>
   </footer>

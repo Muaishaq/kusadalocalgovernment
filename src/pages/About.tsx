@@ -13,7 +13,7 @@ const About = () => (
     <section className="py-20 bg-secondary">
       <div className="container mx-auto px-4 text-center">
         <h1 className="font-display text-4xl md:text-5xl font-black text-secondary-foreground mb-4">
-          About <span className="text-gradient-gold">Aliyu Ismail</span>
+          About <span className="text-gradient-gold">Aliyu Kabir Kusada</span>
         </h1>
         <p className="text-secondary-foreground/70 max-w-2xl mx-auto text-lg">
           A son of Kusada. A servant of the people. A leader for tomorrow.
@@ -28,7 +28,7 @@ const About = () => (
             <h2 className="font-display text-3xl font-bold text-foreground mb-6">The Man Behind the Mission</h2>
             <div className="space-y-4 text-muted-foreground leading-relaxed">
               <p>
-                Aliyu Ismail is a dedicated public servant born and raised in Kusada Local Government Area 
+                Aliyu Kabir Kusada is a dedicated public servant born and raised in Kusada Local Government Area 
                 of Katsina State, Nigeria. His deep understanding of the challenges facing the people of 
                 Kusada drives his unwavering commitment to transformative governance.
               </p>
