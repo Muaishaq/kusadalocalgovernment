@@ -13,7 +13,7 @@ const About = () => (
     <section className="py-20 bg-secondary">
       <div className="container mx-auto px-4 text-center">
         <h1 className="font-display text-4xl md:text-5xl font-black text-secondary-foreground mb-4">
-          About <span className="text-gradient-gold">Aliyu Ismail</span>
+          About <span className="text-gradient-gold">Aliyu Kabir Kusada</span>
         </h1>
         <p className="text-secondary-foreground/70 max-w-2xl mx-auto text-lg">
           A son of Kusada. A servant of the people. A leader for tomorrow.
