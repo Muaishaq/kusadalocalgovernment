@@ -28,7 +28,7 @@ const Index = () => (
           Kusada • Katsina State
         </p>
         <h1 className="font-display text-5xl md:text-7xl font-black text-primary-foreground mb-4 leading-tight">
-          Aliyu <span className="text-gradient-gold">Ismail</span>
+          Aliyu <span className="text-gradient-gold">Kabir Kusada</span>
         </h1>
         <p className="text-primary-foreground/90 text-lg md:text-xl max-w-2xl mx-auto mb-8 font-body leading-relaxed">
           A new vision for Kusada. Together, we build a future of progress, 
