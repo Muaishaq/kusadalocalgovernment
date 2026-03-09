@@ -21,7 +21,7 @@ const Index = () => (
   <Layout>
     {/* Hero */}
     <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
-      <img src={ismailPhoto} alt="Aliyu Ismail" className="absolute inset-0 w-full h-full object-cover" />
+      <img src={ismailPhoto} alt="Aliyu Kabir Kusada" className="absolute inset-0 w-full h-full object-cover" />
       <div className="hero-gradient absolute inset-0" />
       <div className="relative z-10 container mx-auto px-4 text-center">
         <p className="text-primary-foreground/80 text-sm font-body tracking-[0.3em] uppercase mb-4">

@@ -30,7 +30,7 @@ const Navbar = () => {
             <span className="font-display text-primary-foreground text-sm font-bold">AI</span>
           </div>
           <span className="font-display text-lg font-bold text-secondary-foreground">
-            Aliyu Ismail
+            Aliyu Kabir Kusada
           </span>
         </Link>
 

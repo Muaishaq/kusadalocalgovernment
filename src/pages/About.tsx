@@ -28,7 +28,7 @@ const About = () => (
             <h2 className="font-display text-3xl font-bold text-foreground mb-6">The Man Behind the Mission</h2>
             <div className="space-y-4 text-muted-foreground leading-relaxed">
               <p>
-                Aliyu Ismail is a dedicated public servant born and raised in Kusada Local Government Area 
+                Aliyu Kabir Kusada is a dedicated public servant born and raised in Kusada Local Government Area 
                 of Katsina State, Nigeria. His deep understanding of the challenges facing the people of 
                 Kusada drives his unwavering commitment to transformative governance.
               </p>

@@ -51,7 +51,7 @@ const Register = () => {
                 <label className="text-sm font-medium text-foreground mb-1.5 block">Full Name</label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input placeholder="Aliyu Ismail" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="pl-10" required />
+                  <Input placeholder="Aliyu Kabir Kusada" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="pl-10" required />
                 </div>
               </div>
               <div>

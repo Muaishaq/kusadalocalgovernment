@@ -31,7 +31,7 @@ const Footer = () => (
         </div>
       </div>
       <div className="border-t border-secondary-foreground/10 mt-8 pt-6 text-center text-xs text-secondary-foreground/50">
-        © {new Date().getFullYear()} Aliyu Ismail Campaign. All rights reserved.
+        © {new Date().getFullYear()} Aliyu Kabir Kusada Campaign. All rights reserved.
       </div>
     </div>
   </footer>
