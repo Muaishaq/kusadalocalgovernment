@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Shield, Users, BarChart3, Settings, MapPin, Vote, Loader2, UserPlus } from "lucide-react";
+import { Shield, Users, BarChart3, MapPin, Vote, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { Database } from "@/integrations/supabase/types";
@@ -14,10 +14,14 @@ type AppRole = Database["public"]["Enums"]["app_role"];
 interface UserWithRole {
   userId: string;
   fullName: string | null;
-  email: string;
   phone: string | null;
-  roles: AppRole[];
+  roles: { role: AppRole; assignedWardId: string | null }[];
   createdAt: string;
+}
+
+interface Ward {
+  id: string;
+  name: string;
 }
 
 const ROLE_OPTIONS: AppRole[] = ["pu_admin", "ward_supervisor", "lga_admin", "auditor", "super_admin"];
@@ -28,6 +32,8 @@ const SuperAdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [assigningRole, setAssigningRole] = useState<string | null>(null);
   const [stats, setStats] = useState({ users: 0, wards: 0, pus: 0, elections: 0, votes: 0 });
+  const [wards, setWards] = useState<Ward[]>([]);
+  const [pendingAssign, setPendingAssign] = useState<Record<string, { role: AppRole; wardId?: string }>>({});
 
   const fetchStats = async () => {
     const [wardRes, puRes, electionRes, voteRes] = await Promise.all([
@@ -37,7 +43,7 @@ const SuperAdminDashboard = () => {
       supabase.from("votes").select("id", { count: "exact", head: true }),
     ]);
     setStats({
-      users: 0, // will be set from profiles
+      users: 0,
       wards: wardRes.count || 0,
       pus: puRes.count || 0,
       elections: electionRes.count || 0,
@@ -45,31 +51,26 @@ const SuperAdminDashboard = () => {
     });
   };
 
+  const fetchWards = async () => {
+    const { data } = await supabase.from("wards").select("id, name").order("name");
+    setWards(data || []);
+  };
+
   const fetchUsers = async () => {
-    // Get all profiles
-    const { data: profiles, error: profileError } = await supabase
-      .from("profiles")
-      .select("user_id, full_name, phone, created_at");
+    const [{ data: profiles }, { data: allRoles }] = await Promise.all([
+      supabase.from("profiles").select("user_id, full_name, phone, created_at"),
+      supabase.from("user_roles").select("user_id, role, assigned_ward_id"),
+    ]);
 
-    if (profileError) {
-      console.error("Error fetching profiles:", profileError);
-      setLoading(false);
-      return;
-    }
-
-    // Get all roles
-    const { data: allRoles } = await supabase.from("user_roles").select("user_id, role");
-
-    const roleMap: Record<string, AppRole[]> = {};
+    const roleMap: Record<string, { role: AppRole; assignedWardId: string | null }[]> = {};
     for (const r of allRoles || []) {
       if (!roleMap[r.user_id]) roleMap[r.user_id] = [];
-      roleMap[r.user_id].push(r.role);
+      roleMap[r.user_id].push({ role: r.role, assignedWardId: r.assigned_ward_id });
     }
 
     const mapped: UserWithRole[] = (profiles || []).map((p) => ({
       userId: p.user_id,
       fullName: p.full_name,
-      email: "", // we don't have access to auth.users email from client
       phone: p.phone,
       roles: roleMap[p.user_id] || [],
       createdAt: p.created_at,
@@ -82,23 +83,57 @@ const SuperAdminDashboard = () => {
 
   useEffect(() => {
     fetchStats();
+    fetchWards();
     fetchUsers();
   }, []);
 
-  const handleAssignRole = async (userId: string, role: AppRole) => {
+  const handleRoleSelect = (userId: string, role: AppRole) => {
+    if (role === "pu_admin") {
+      setPendingAssign((prev) => ({ ...prev, [userId]: { role } }));
+    } else {
+      assignRole(userId, role);
+    }
+  };
+
+  const handleWardSelect = (userId: string, wardId: string) => {
+    setPendingAssign((prev) => ({
+      ...prev,
+      [userId]: { ...prev[userId], wardId },
+    }));
+  };
+
+  const assignRole = async (userId: string, role: AppRole, wardId?: string) => {
     setAssigningRole(userId);
-    const { error } = await supabase.from("user_roles").insert({ user_id: userId, role });
+    const insertData: any = { user_id: userId, role };
+    if (role === "pu_admin" && wardId) {
+      insertData.assigned_ward_id = wardId;
+    }
+    const { error } = await supabase.from("user_roles").insert(insertData);
     if (error) {
-      if (error.code === "23505") {
-        toast({ title: "Role already assigned", description: `This user already has the ${role} role.`, variant: "destructive" });
-      } else {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
-      }
+      toast({
+        title: error.code === "23505" ? "Role already assigned" : "Error",
+        description: error.code === "23505" ? `This user already has the ${role} role.` : error.message,
+        variant: "destructive",
+      });
     } else {
       toast({ title: "Role assigned", description: `Successfully assigned ${role.replace("_", " ")} role.` });
+      setPendingAssign((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
       await fetchUsers();
     }
     setAssigningRole(null);
+  };
+
+  const confirmAssign = (userId: string) => {
+    const pending = pendingAssign[userId];
+    if (!pending || !pending.wardId) {
+      toast({ title: "Select a ward", description: "You must select a ward for PU Admin role.", variant: "destructive" });
+      return;
+    }
+    assignRole(userId, pending.role, pending.wardId);
   };
 
   const handleRemoveRole = async (userId: string, role: AppRole) => {
@@ -113,6 +148,11 @@ const SuperAdminDashboard = () => {
     setAssigningRole(null);
   };
 
+  const getWardName = (wardId: string | null) => {
+    if (!wardId) return null;
+    return wards.find((w) => w.id === wardId)?.name || null;
+  };
+
   const statCards = [
     { label: "Users", value: stats.users.toString(), icon: Users },
     { label: "Wards", value: stats.wards.toString(), icon: MapPin },
@@ -124,7 +164,6 @@ const SuperAdminDashboard = () => {
 
   return (
     <div className="space-y-6">
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {statCards.map((item) => (
           <Card key={item.label}>
@@ -139,7 +178,6 @@ const SuperAdminDashboard = () => {
         ))}
       </div>
 
-      {/* User Management */}
       <Card>
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2">
@@ -176,12 +214,16 @@ const SuperAdminDashboard = () => {
                         ) : (
                           u.roles.map((r) => (
                             <Badge
-                              key={r}
+                              key={r.role}
                               className="bg-primary/10 text-primary border-primary/20 cursor-pointer hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20"
-                              onClick={() => handleRemoveRole(u.userId, r)}
-                              title={`Click to remove ${r}`}
+                              onClick={() => handleRemoveRole(u.userId, r.role)}
+                              title={`Click to remove ${r.role}`}
                             >
-                              {r.replace("_", " ")} ×
+                              {r.role.replace("_", " ")}
+                              {r.role === "pu_admin" && r.assignedWardId && (
+                                <span className="ml-1 opacity-70">({getWardName(r.assignedWardId) || "ward"})</span>
+                              )}
+                              {" ×"}
                             </Badge>
                           ))
                         )}
@@ -191,21 +233,56 @@ const SuperAdminDashboard = () => {
                       {new Date(u.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
-                      <Select
-                        onValueChange={(val) => handleAssignRole(u.userId, val as AppRole)}
-                        disabled={assigningRole === u.userId}
-                      >
-                        <SelectTrigger className="w-[160px]">
-                          <SelectValue placeholder="Add role..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ROLE_OPTIONS.filter((r) => !u.roles.includes(r)).map((r) => (
-                            <SelectItem key={r} value={r}>
-                              {r.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center gap-2">
+                        {pendingAssign[u.userId]?.role === "pu_admin" ? (
+                          <>
+                            <Select onValueChange={(val) => handleWardSelect(u.userId, val)}>
+                              <SelectTrigger className="w-[140px]">
+                                <SelectValue placeholder="Select ward..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {wards.map((w) => (
+                                  <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="sm"
+                              onClick={() => confirmAssign(u.userId)}
+                              disabled={assigningRole === u.userId || !pendingAssign[u.userId]?.wardId}
+                            >
+                              Assign
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setPendingAssign((prev) => {
+                                const next = { ...prev };
+                                delete next[u.userId];
+                                return next;
+                              })}
+                            >
+                              Cancel
+                            </Button>
+                          </>
+                        ) : (
+                          <Select
+                            onValueChange={(val) => handleRoleSelect(u.userId, val as AppRole)}
+                            disabled={assigningRole === u.userId}
+                          >
+                            <SelectTrigger className="w-[160px]">
+                              <SelectValue placeholder="Add role..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROLE_OPTIONS.filter((r) => !u.roles.some((ur) => ur.role === r)).map((r) => (
+                                <SelectItem key={r} value={r}>
+                                  {r.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
