@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Users, MapPin, TrendingUp, Loader2 } from "lucide-react";
+import { BarChart3, Users, MapPin, TrendingUp, Loader2, FileImage } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,6 +29,7 @@ interface PUDetail {
   accredited: number | null;
   invalid: number | null;
   verified: boolean | null;
+  proofUrl: string | null;
 }
 
 const LGAAdminDashboard = () => {
@@ -36,12 +39,12 @@ const LGAAdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [lgaName, setLgaName] = useState("");
   const [parties, setParties] = useState<string[]>([]);
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
 
     const fetchData = async () => {
-      // Get assigned LGA
       const { data: roleData } = await supabase
         .from("user_roles")
         .select("assigned_lga_id")
@@ -50,22 +53,17 @@ const LGAAdminDashboard = () => {
         .single();
 
       const lgaId = roleData?.assigned_lga_id;
-      if (!lgaId) {
-        setLoading(false);
-        return;
-      }
+      if (!lgaId) { setLoading(false); return; }
 
       const { data: lga } = await supabase.from("lgas").select("name").eq("id", lgaId).single();
       setLgaName(lga?.name || "");
 
-      // Get wards in this LGA
       const { data: wards } = await supabase.from("wards").select("id, name").eq("lga_id", lgaId);
       if (!wards || wards.length === 0) { setLoading(false); return; }
 
       const wardIds = wards.map((w) => w.id);
       const wardMap = Object.fromEntries(wards.map((w) => [w.id, w.name]));
 
-      // Get PUs in these wards
       const { data: pus } = await supabase
         .from("polling_units")
         .select("id, name, code, ward_id")
@@ -76,7 +74,6 @@ const LGAAdminDashboard = () => {
       const puIds = pus.map((p) => p.id);
       const puMap = Object.fromEntries(pus.map((p) => [p.id, { name: p.name, code: p.code, wardId: p.ward_id }]));
 
-      // Get votes & parties
       const [{ data: votes }, { data: partyData }] = await Promise.all([
         supabase.from("votes").select("*").in("polling_unit_id", puIds),
         supabase.from("parties").select("id, abbreviation"),
@@ -86,7 +83,6 @@ const LGAAdminDashboard = () => {
       const allParties = [...new Set((partyData || []).map((p) => p.abbreviation))];
       setParties(allParties);
 
-      // Build PU details
       const details: PUDetail[] = (votes || []).map((v) => ({
         puName: puMap[v.polling_unit_id]?.name || "Unknown",
         puCode: puMap[v.polling_unit_id]?.code || "",
@@ -96,10 +92,10 @@ const LGAAdminDashboard = () => {
         accredited: v.accredited_voters,
         invalid: v.invalid_votes,
         verified: v.is_verified,
+        proofUrl: v.photo_proof_url,
       }));
       setPuDetails(details);
 
-      // Build ward aggregates
       const aggMap: Record<string, WardAggregate> = {};
       for (const w of wards) {
         aggMap[w.id] = {
@@ -135,7 +131,6 @@ const LGAAdminDashboard = () => {
   const totalVerified = wardAggregates.reduce((s, w) => s + w.verified, 0);
   const totalEntries = wardAggregates.reduce((s, w) => s + w.verified + w.pending, 0);
 
-  // Chart data
   const chartData = wardAggregates
     .filter((w) => w.totalVotes > 0)
     .map((w) => ({ ward: w.wardName, ...w.partyBreakdown }));
@@ -166,34 +161,27 @@ const LGAAdminDashboard = () => {
     <div className="space-y-6">
       {lgaName && <p className="text-sm font-medium text-primary">LGA: {lgaName}</p>}
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Wards</CardTitle>
             <MapPin className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-display">{totalWards}</div>
-          </CardContent>
+          <CardContent><div className="text-2xl font-bold font-display">{totalWards}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total PUs</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-display">{totalPUs}</div>
-          </CardContent>
+          <CardContent><div className="text-2xl font-bold font-display">{totalPUs}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Votes</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-display">{totalVotes.toLocaleString()}</div>
-          </CardContent>
+          <CardContent><div className="text-2xl font-bold font-display">{totalVotes.toLocaleString()}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -204,7 +192,7 @@ const LGAAdminDashboard = () => {
             <div className="text-2xl font-bold font-display">
               {totalEntries > 0 ? Math.round((totalVerified / totalEntries) * 100) : 0}%
             </div>
-            <p className="text-xs text-muted-foreground">{totalVerified} of {totalEntries} entries</p>
+            <p className="text-xs text-muted-foreground">{totalVerified} of {totalEntries}</p>
           </CardContent>
         </Card>
       </div>
@@ -216,12 +204,9 @@ const LGAAdminDashboard = () => {
           <TabsTrigger value="details">PU Breakdown</TabsTrigger>
         </TabsList>
 
-        {/* Bar Chart */}
         <TabsContent value="chart">
           <Card>
-            <CardHeader>
-              <CardTitle className="font-display text-lg">Votes by Ward & Party</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="font-display text-lg">Votes by Ward & Party</CardTitle></CardHeader>
             <CardContent>
               {chartData.length === 0 ? (
                 <p className="text-muted-foreground text-sm py-4">No vote data available yet.</p>
@@ -242,12 +227,9 @@ const LGAAdminDashboard = () => {
           </Card>
         </TabsContent>
 
-        {/* Ward Summary Table */}
         <TabsContent value="wards">
           <Card>
-            <CardHeader>
-              <CardTitle className="font-display text-lg">Ward-Level Aggregates</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="font-display text-lg">Ward-Level Aggregates</CardTitle></CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
@@ -255,9 +237,7 @@ const LGAAdminDashboard = () => {
                     <TableHead>Ward</TableHead>
                     <TableHead className="text-right">PUs</TableHead>
                     <TableHead className="text-right">Total Votes</TableHead>
-                    {parties.map((p) => (
-                      <TableHead key={p} className="text-right">{p}</TableHead>
-                    ))}
+                    {parties.map((p) => (<TableHead key={p} className="text-right">{p}</TableHead>))}
                     <TableHead className="text-right">Verified</TableHead>
                     <TableHead className="text-right">Pending</TableHead>
                   </TableRow>
@@ -269,16 +249,10 @@ const LGAAdminDashboard = () => {
                       <TableCell className="text-right font-mono">{w.puCount}</TableCell>
                       <TableCell className="text-right font-mono font-bold">{w.totalVotes.toLocaleString()}</TableCell>
                       {parties.map((p) => (
-                        <TableCell key={p} className="text-right font-mono">
-                          {(w.partyBreakdown[p] || 0).toLocaleString()}
-                        </TableCell>
+                        <TableCell key={p} className="text-right font-mono">{(w.partyBreakdown[p] || 0).toLocaleString()}</TableCell>
                       ))}
-                      <TableCell className="text-right">
-                        <Badge className="bg-primary/10 text-primary border-primary/20">{w.verified}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant="secondary">{w.pending}</Badge>
-                      </TableCell>
+                      <TableCell className="text-right"><Badge className="bg-primary/10 text-primary border-primary/20">{w.verified}</Badge></TableCell>
+                      <TableCell className="text-right"><Badge variant="secondary">{w.pending}</Badge></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -287,12 +261,9 @@ const LGAAdminDashboard = () => {
           </Card>
         </TabsContent>
 
-        {/* PU Detail Table */}
         <TabsContent value="details">
           <Card>
-            <CardHeader>
-              <CardTitle className="font-display text-lg">Individual PU Results</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="font-display text-lg">Individual PU Results</CardTitle></CardHeader>
             <CardContent>
               {puDetails.length === 0 ? (
                 <p className="text-muted-foreground text-sm py-4">No results submitted yet.</p>
@@ -308,6 +279,7 @@ const LGAAdminDashboard = () => {
                       <TableHead className="text-right">Accredited</TableHead>
                       <TableHead className="text-right">Invalid</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Proof</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -327,6 +299,15 @@ const LGAAdminDashboard = () => {
                             <Badge variant="secondary">Pending</Badge>
                           )}
                         </TableCell>
+                        <TableCell>
+                          {r.proofUrl ? (
+                            <Button size="sm" variant="ghost" onClick={() => setProofUrl(r.proofUrl)}>
+                              <FileImage className="h-4 w-4 mr-1" /> View
+                            </Button>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">None</span>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -336,6 +317,24 @@ const LGAAdminDashboard = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Proof Viewer Modal */}
+      <Dialog open={!!proofUrl} onOpenChange={(open) => !open && setProofUrl(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <FileImage className="h-5 w-5" /> Result Sheet Proof
+            </DialogTitle>
+          </DialogHeader>
+          {proofUrl && (
+            proofUrl.endsWith(".pdf") ? (
+              <iframe src={proofUrl} className="w-full h-[70vh] rounded-lg border" title="Proof document" />
+            ) : (
+              <img src={proofUrl} alt="Result sheet proof" className="w-full max-h-[70vh] object-contain rounded-lg" />
+            )
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
