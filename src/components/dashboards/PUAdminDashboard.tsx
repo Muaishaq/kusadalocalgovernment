@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
-import { ClipboardList, Upload, CheckCircle, Loader2, MapPin, Send } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { ClipboardList, Upload, CheckCircle, Loader2, MapPin, Send, Camera } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -39,24 +38,27 @@ interface VoteEntry {
 const PUAdminDashboard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [wardName, setWardName] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [wardName, setWardName] = useState("");
   const [pollingUnits, setPollingUnits] = useState<PollingUnit[]>([]);
   const [parties, setParties] = useState<Party[]>([]);
   const [elections, setElections] = useState<Election[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPU, setSelectedPU] = useState<PollingUnit | null>(null);
-  const [selectedElection, setSelectedElection] = useState<string>("");
+  const [selectedElection, setSelectedElection] = useState("");
   const [voteEntries, setVoteEntries] = useState<VoteEntry[]>([]);
   const [accreditedVoters, setAccreditedVoters] = useState("");
   const [invalidVotes, setInvalidVotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submittedPUs, setSubmittedPUs] = useState<Set<string>>(new Set());
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
 
     const fetchData = async () => {
-      // Get assigned ward
       const { data: roleData } = await supabase
         .from("user_roles")
         .select("assigned_ward_id")
@@ -71,7 +73,6 @@ const PUAdminDashboard = () => {
 
       const wardId = roleData.assigned_ward_id;
 
-      // Fetch ward name, polling units, parties, elections in parallel
       const [wardRes, puRes, partyRes, electionRes] = await Promise.all([
         supabase.from("wards").select("name").eq("id", wardId).single(),
         supabase.from("polling_units").select("id, name, code, registered_voters").eq("ward_id", wardId).order("name"),
@@ -84,7 +85,6 @@ const PUAdminDashboard = () => {
       setParties(partyRes.data || []);
       setElections(electionRes.data || []);
 
-      // Check which PUs already have submissions
       if (electionRes.data?.length && puRes.data?.length) {
         const { data: existingVotes } = await supabase
           .from("votes")
@@ -109,10 +109,56 @@ const PUAdminDashboard = () => {
     setVoteEntries(parties.map((p) => ({ partyId: p.id, count: "" })));
     setAccreditedVoters("");
     setInvalidVotes("");
+    setProofFile(null);
+    setProofPreview(null);
   };
 
   const updateVoteCount = (partyId: string, count: string) => {
     setVoteEntries((prev) => prev.map((e) => (e.partyId === partyId ? { ...e, count } : e)));
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      toast({ title: "Invalid file", description: "Please upload an image or PDF.", variant: "destructive" });
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum file size is 10MB.", variant: "destructive" });
+      return;
+    }
+
+    setProofFile(file);
+    if (file.type.startsWith("image/")) {
+      setProofPreview(URL.createObjectURL(file));
+    } else {
+      setProofPreview(null);
+    }
+  };
+
+  const uploadProof = async (): Promise<string | null> => {
+    if (!proofFile || !user || !selectedPU) return null;
+
+    setUploading(true);
+    const ext = proofFile.name.split(".").pop();
+    const path = `${user.id}/${selectedPU.id}/${Date.now()}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from("vote-proofs")
+      .upload(path, proofFile, { cacheControl: "3600", upsert: false });
+
+    setUploading(false);
+
+    if (error) {
+      toast({ title: "Upload failed", description: error.message, variant: "destructive" });
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage.from("vote-proofs").getPublicUrl(path);
+    return urlData.publicUrl;
   };
 
   const handleSubmitVotes = async () => {
@@ -124,7 +170,18 @@ const PUAdminDashboard = () => {
       return;
     }
 
+    if (!proofFile) {
+      toast({ title: "Proof required", description: "Please upload a photo/scan of the result sheet.", variant: "destructive" });
+      return;
+    }
+
     setSubmitting(true);
+
+    const proofUrl = await uploadProof();
+    if (!proofUrl) {
+      setSubmitting(false);
+      return;
+    }
 
     const inserts = voteEntries
       .filter((e) => e.count && parseInt(e.count) >= 0)
@@ -136,6 +193,7 @@ const PUAdminDashboard = () => {
         submitted_by: user.id,
         accredited_voters: accreditedVoters ? parseInt(accreditedVoters) : null,
         invalid_votes: invalidVotes ? parseInt(invalidVotes) : null,
+        photo_proof_url: proofUrl,
       }));
 
     const { error } = await supabase.from("votes").insert(inserts);
@@ -143,7 +201,7 @@ const PUAdminDashboard = () => {
     if (error) {
       toast({ title: "Submission failed", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Votes submitted", description: `Results for ${selectedPU.name} have been recorded.` });
+      toast({ title: "Votes submitted", description: `Results for ${selectedPU.name} recorded with proof.` });
       setSubmittedPUs((prev) => new Set([...prev, selectedPU.id]));
       setSelectedPU(null);
     }
@@ -175,7 +233,6 @@ const PUAdminDashboard = () => {
     <div className="space-y-6">
       <OfflineStatusBar />
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -209,7 +266,6 @@ const PUAdminDashboard = () => {
         </Card>
       </div>
 
-      {/* Polling Units List */}
       <Card>
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2">
@@ -248,11 +304,7 @@ const PUAdminDashboard = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          size="sm"
-                          disabled={submitted || elections.length === 0}
-                          onClick={() => openVoteDialog(pu)}
-                        >
+                        <Button size="sm" disabled={submitted || elections.length === 0} onClick={() => openVoteDialog(pu)}>
                           <ClipboardList className="h-3 w-3 mr-1" />
                           {submitted ? "Done" : "Enter Votes"}
                         </Button>
@@ -281,23 +333,11 @@ const PUAdminDashboard = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Accredited Voters</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={accreditedVoters}
-                  onChange={(e) => setAccreditedVoters(e.target.value)}
-                  placeholder="0"
-                />
+                <Input type="number" min="0" value={accreditedVoters} onChange={(e) => setAccreditedVoters(e.target.value)} placeholder="0" />
               </div>
               <div>
                 <Label>Invalid/Void Votes</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={invalidVotes}
-                  onChange={(e) => setInvalidVotes(e.target.value)}
-                  placeholder="0"
-                />
+                <Input type="number" min="0" value={invalidVotes} onChange={(e) => setInvalidVotes(e.target.value)} placeholder="0" />
               </div>
             </div>
 
@@ -322,11 +362,48 @@ const PUAdminDashboard = () => {
                 );
               })}
             </div>
+
+            {/* Photo Proof Upload */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <Camera className="h-4 w-4" /> Result Sheet Proof <span className="text-destructive">*</span>
+              </Label>
+              <p className="text-xs text-muted-foreground">Upload a clear photo or scan of the official result sheet.</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                capture="environment"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Camera className="h-4 w-4 mr-2" />
+                {proofFile ? proofFile.name : "Take Photo / Upload Document"}
+              </Button>
+              {proofPreview && (
+                <img
+                  src={proofPreview}
+                  alt="Result sheet preview"
+                  className="w-full max-h-48 object-contain rounded-lg border"
+                />
+              )}
+              {proofFile && !proofPreview && (
+                <div className="p-3 rounded-lg border bg-muted text-sm text-muted-foreground text-center">
+                  PDF document selected: {proofFile.name}
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelectedPU(null)}>Cancel</Button>
-            <Button onClick={handleSubmitVotes} disabled={submitting}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+            <Button onClick={handleSubmitVotes} disabled={submitting || uploading}>
+              {(submitting || uploading) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
               Submit Results
             </Button>
           </DialogFooter>
