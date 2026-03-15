@@ -3,10 +3,10 @@ import { ClipboardList, Upload, CheckCircle, Loader2, MapPin, Send, Camera } fro
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import OfflineStatusBar from "@/components/OfflineStatusBar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -45,6 +45,7 @@ const PUAdminDashboard = () => {
   const [elections, setElections] = useState<Election[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPU, setSelectedPU] = useState<PollingUnit | null>(null);
+  const [selectedPUId, setSelectedPUId] = useState("");
   const [selectedElection, setSelectedElection] = useState("");
   const [voteEntries, setVoteEntries] = useState<VoteEntry[]>([]);
   const [accreditedVoters, setAccreditedVoters] = useState("");
@@ -54,63 +55,76 @@ const PUAdminDashboard = () => {
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
 
     const fetchData = async () => {
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("assigned_ward_id")
-        .eq("user_id", user.id)
-        .eq("role", "pu_admin")
-        .single();
+      try {
+        const { data: roleData, error: roleError } = await supabase
+          .from("user_roles")
+          .select("assigned_ward_id")
+          .eq("user_id", user.id)
+          .eq("role", "pu_admin")
+          .single();
 
-      if (!roleData?.assigned_ward_id) {
-        setLoading(false);
-        return;
-      }
-
-      const wardId = roleData.assigned_ward_id;
-
-      const [wardRes, puRes, partyRes, electionRes] = await Promise.all([
-        supabase.from("wards").select("name").eq("id", wardId).single(),
-        supabase.from("polling_units").select("id, name, code, registered_voters").eq("ward_id", wardId).order("name"),
-        supabase.from("parties").select("id, name, abbreviation").order("abbreviation"),
-        supabase.from("elections").select("id, name").eq("status", "active"),
-      ]);
-
-      setWardName(wardRes.data?.name || "");
-      setPollingUnits(puRes.data || []);
-      setParties(partyRes.data || []);
-      setElections(electionRes.data || []);
-
-      if (electionRes.data?.length && puRes.data?.length) {
-        const { data: existingVotes } = await supabase
-          .from("votes")
-          .select("polling_unit_id")
-          .eq("election_id", electionRes.data[0].id)
-          .eq("submitted_by", user.id);
-
-        if (existingVotes) {
-          setSubmittedPUs(new Set(existingVotes.map((v) => v.polling_unit_id)));
+        if (roleError || !roleData?.assigned_ward_id) {
+          console.error("Role fetch error:", roleError);
+          setLoading(false);
+          return;
         }
-        setSelectedElection(electionRes.data[0].id);
-      }
 
-      setLoading(false);
+        const wardId = roleData.assigned_ward_id;
+
+        const [wardRes, puRes, partyRes, electionRes] = await Promise.all([
+          supabase.from("wards").select("name").eq("id", wardId).single(),
+          supabase.from("polling_units").select("id, name, code, registered_voters").eq("ward_id", wardId).order("name"),
+          supabase.from("parties").select("id, name, abbreviation").order("abbreviation"),
+          supabase.from("elections").select("id, name").eq("status", "ongoing"),
+        ]);
+
+        setWardName(wardRes.data?.name || "");
+        setPollingUnits(puRes.data || []);
+        setParties(partyRes.data || []);
+        setElections(electionRes.data || []);
+
+        if (electionRes.data?.length) {
+          const electionId = electionRes.data[0].id;
+          setSelectedElection(electionId);
+
+          const { data: existingVotes } = await supabase
+            .from("votes")
+            .select("polling_unit_id")
+            .eq("election_id", electionId)
+            .eq("submitted_by", user.id);
+
+          if (existingVotes) {
+            setSubmittedPUs(new Set(existingVotes.map((v) => v.polling_unit_id)));
+          }
+        }
+      } catch (err) {
+        console.error("Dashboard fetch error:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchData();
   }, [user]);
 
-  const openVoteDialog = (pu: PollingUnit) => {
-    setSelectedPU(pu);
-    setVoteEntries(parties.map((p) => ({ partyId: p.id, count: "" })));
-    setAccreditedVoters("");
-    setInvalidVotes("");
-    setProofFile(null);
-    setProofPreview(null);
+  const handlePUSelect = (puId: string) => {
+    setSelectedPUId(puId);
+    const pu = pollingUnits.find((p) => p.id === puId);
+    if (pu) {
+      setSelectedPU(pu);
+      setVoteEntries(parties.map((p) => ({ partyId: p.id, count: "" })));
+      setAccreditedVoters("");
+      setInvalidVotes("");
+      setProofFile(null);
+      setProofPreview(null);
+      setDialogOpen(true);
+    }
   };
 
   const updateVoteCount = (partyId: string, count: string) => {
@@ -203,7 +217,9 @@ const PUAdminDashboard = () => {
     } else {
       toast({ title: "Votes submitted", description: `Results for ${selectedPU.name} recorded with proof.` });
       setSubmittedPUs((prev) => new Set([...prev, selectedPU.id]));
+      setDialogOpen(false);
       setSelectedPU(null);
+      setSelectedPUId("");
     }
 
     setSubmitting(false);
@@ -228,11 +244,13 @@ const PUAdminDashboard = () => {
   }
 
   const pendingCount = pollingUnits.length - submittedPUs.size;
+  const availablePUs = pollingUnits.filter((pu) => !submittedPUs.has(pu.id));
 
   return (
     <div className="space-y-6">
       <OfflineStatusBar />
 
+      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -266,68 +284,88 @@ const PUAdminDashboard = () => {
         </Card>
       </div>
 
+      {/* Polling Unit Selector */}
       <Card>
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2">
-            <MapPin className="h-5 w-5" /> Polling Units — {wardName} Ward
+            <MapPin className="h-5 w-5" /> Select Polling Unit — {wardName} Ward
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {elections.length === 0 && (
+            <p className="text-muted-foreground text-sm">No active election found. Vote entry is disabled.</p>
+          )}
+
           {pollingUnits.length === 0 ? (
             <p className="text-muted-foreground text-sm">No polling units found for this ward.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Registered Voters</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <div className="space-y-2">
+                <Label>Choose a Polling Unit to submit results</Label>
+                <Select
+                  value={selectedPUId}
+                  onValueChange={handlePUSelect}
+                  disabled={elections.length === 0}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a polling unit..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pollingUnits.map((pu) => {
+                      const submitted = submittedPUs.has(pu.id);
+                      return (
+                        <SelectItem key={pu.id} value={pu.id} disabled={submitted}>
+                          {pu.code} — {pu.name} {submitted ? "✓" : ""} ({pu.registered_voters ?? 0} voters)
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Status overview */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
                 {pollingUnits.map((pu) => {
                   const submitted = submittedPUs.has(pu.id);
                   return (
-                    <TableRow key={pu.id}>
-                      <TableCell className="font-mono text-sm">{pu.code}</TableCell>
-                      <TableCell className="font-medium">{pu.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{pu.registered_voters ?? "—"}</TableCell>
-                      <TableCell>
+                    <div
+                      key={pu.id}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        submitted
+                          ? "bg-primary/5 border-primary/20"
+                          : "bg-card hover:bg-accent/50 border-border"
+                      }`}
+                      onClick={() => !submitted && elections.length > 0 && handlePUSelect(pu.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs text-muted-foreground">{pu.code}</span>
                         {submitted ? (
-                          <Badge className="bg-primary/10 text-primary border-primary/20">
-                            <CheckCircle className="h-3 w-3 mr-1" /> Submitted
+                          <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
+                            <CheckCircle className="h-3 w-3 mr-1" /> Done
                           </Badge>
                         ) : (
-                          <Badge variant="secondary">Pending</Badge>
+                          <Badge variant="secondary" className="text-xs">Pending</Badge>
                         )}
-                      </TableCell>
-                      <TableCell>
-                        <Button size="sm" disabled={submitted || elections.length === 0} onClick={() => openVoteDialog(pu)}>
-                          <ClipboardList className="h-3 w-3 mr-1" />
-                          {submitted ? "Done" : "Enter Votes"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                      <p className="font-medium text-sm mt-1">{pu.name}</p>
+                      <p className="text-xs text-muted-foreground">{pu.registered_voters ?? 0} registered voters</p>
+                    </div>
                   );
                 })}
-              </TableBody>
-            </Table>
-          )}
-          {elections.length === 0 && (
-            <p className="text-muted-foreground text-sm mt-4">No active election found. Vote entry is disabled.</p>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
 
       {/* Vote Entry Dialog */}
-      <Dialog open={!!selectedPU} onOpenChange={(open) => !open && setSelectedPU(null)}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setSelectedPU(null); setSelectedPUId(""); } }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-display">
               Enter Vote Results — {selectedPU?.name}
             </DialogTitle>
+            <p className="text-xs text-muted-foreground">{selectedPU?.code}</p>
           </DialogHeader>
           <div className="space-y-4 max-h-[60vh] overflow-y-auto">
             <div className="grid grid-cols-2 gap-4">
@@ -401,7 +439,7 @@ const PUAdminDashboard = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedPU(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setDialogOpen(false); setSelectedPU(null); setSelectedPUId(""); }}>Cancel</Button>
             <Button onClick={handleSubmitVotes} disabled={submitting || uploading}>
               {(submitting || uploading) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
               Submit Results
